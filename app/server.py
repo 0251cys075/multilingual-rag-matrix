@@ -35,14 +35,9 @@ def get_live_p95(current_ms: float) -> float:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("--- Pre-warming model and FAISS cache ---")
-    try:
-        if hasattr(retriever, "search") and callable(getattr(retriever, "search")):
-            retriever.search("Corporation", top_k=1)
-        print("--- Warmup complete: Ready for sub-200ms queries! ---")
-    except Exception as e:
-        print(f"Warmup warning: {e}")
+    print("--- Server initialized successfully (Lazy loading active) ---")
     yield
+
 
 app = FastAPI(lifespan=lifespan)
 
