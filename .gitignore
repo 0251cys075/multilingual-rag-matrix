@@ -1,0 +1,21 @@
+# Environment variables / API keys
+.env
+
+# Python virtual environments
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Heavy data, models, and binary cache files (Excluded to stay under GitHub limits)
+data/
+onnx-multilingual-minilm/
+*.bin
+*.onnx
+.cache/
+indic_datasets/
+validation/
+
+# OS files
+.DS_Store
+Thumbs.db
