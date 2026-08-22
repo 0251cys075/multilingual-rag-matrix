@@ -26,3 +26,7 @@ __pycache__/
 *.db
 venv/
 __pycache__/
+*.jsonl
+*.db
+venv/
+__pycache__/
