@@ -658,6 +658,58 @@
         document.getElementById('voiceStatusText').innerText = "VOICE INPUT";
     }
 
+
+    function renderProofNodes(nodes) {
+        const container = document.getElementById('evidenceContainer');
+        if (!container) return;
+
+        const validNodes = Array.isArray(nodes)
+            ? nodes.filter(node => node && typeof node === 'object' && node.text).slice(0, 3)
+            : [];
+
+        container.replaceChildren();
+
+        if (validNodes.length === 0) {
+            const emptyCard = document.createElement('div');
+            emptyCard.className = 'evidence-node';
+            emptyCard.textContent = 'No matching evidence found within tuned threshold.';
+            container.appendChild(emptyCard);
+            return;
+        }
+
+        validNodes.forEach((node, index) => {
+            const card = document.createElement('div');
+            card.className = 'evidence-node';
+
+            const header = document.createElement('div');
+            header.className = 'evidence-header';
+
+            const ref = document.createElement('span');
+            ref.textContent = 'GROUND PROOF NODE ' + (index + 1) + ' · ' + String(node.doc_ref || 'UNKNOWN');
+
+            const score = document.createElement('span');
+            score.className = 'score';
+            const similarity = Number(node.similarity);
+            const scoreText = node.percentage_str || (
+                Number.isFinite(similarity)
+                    ? ((similarity <= 1 ? similarity * 100 : similarity).toFixed(1) + '%')
+                    : 'N/A'
+            );
+            score.textContent = 'MATCH: ' + scoreText;
+
+            header.appendChild(ref);
+            header.appendChild(score);
+
+            const body = document.createElement('div');
+            const rawText = String(node.text || '');
+            body.textContent = rawText.length > 420 ? rawText.slice(0, 420) + '…' : rawText;
+
+            card.appendChild(header);
+            card.appendChild(body);
+            container.appendChild(card);
+        });
+    }
+
     async function sendQuery() {
         const queryText = document.getElementById('queryInput').value.trim();
         if (!queryText) return;
@@ -679,47 +731,44 @@
             const data = await response.json();
 
             if (response.ok) {
-                document.getElementById('answerBox').innerText = data.answer || "No response generated.";
+                document.getElementById('answerBox').innerText = data.synthesized_output || data.answer || "No response generated.";
 
                 // Render Evidence Nodes
-                const chunks = data.context || [];
-                if (chunks.length > 0) {
-                    let html = "";
-                    chunks.forEach((chunkText, idx) => {
-                        const simScore = (0.96 - (idx * 0.03)).toFixed(4);
-                        html += `
-                            <div class="evidence-node lang-${currentLang}">
-                                <div class="evidence-header">
-                                    <span>PROOF NODE [${idx + 1}]</span>
-                                    <span class="score">SIMILARITY: ${simScore}</span>
-                                </div>
-                                <p style="margin: 0; line-height: 1.4;">"${chunkText}"</p>
-                            </div>
-                        `;
-                    });
-                    document.getElementById('evidenceContainer').innerHTML = html;
-                } else {
-                    document.getElementById('evidenceContainer').innerHTML = `
-                        <div class="evidence-node">
-                            <div class="evidence-header"><span>STATUS</span><span class="score">NULL MATCH</span></div>
-                            <div>No matching evidence found within tuned threshold.</div>
-                        </div>`;
-                }
+                renderProofNodes(data.nodes || data.context || []);
 
                 // Telemetry calculations
-                const embedMs = data.embed_ms || 14.2;
-                const searchMs = data.search_ms || 0.4;
-                const guardMs = data.guardrail_ms || 0.9;
-                const genMs = data.gen_ms || 18.5;
-                const totalMs = data.total_ms || (embedMs + searchMs + guardMs + genMs);
+                const embedMs = data.telemetry?.embed_ms ?? data.embed_ms ?? 0;
+                const searchMs = data.telemetry?.search_ms ?? data.search_ms ?? 0;
+                const guardMs = data.telemetry?.guard_ms ?? data.guardrail_ms ?? 0;
+                const genMs = data.telemetry?.gen_ms ?? data.gen_ms ?? 0;
+                const totalMs = data.telemetry?.end_to_end_ms ?? data.total_ms ?? (embedMs + searchMs + guardMs + genMs);
 
-                // Update Trust Gauges
-                document.getElementById('valGrounding').innerText = "0.9621";
-                document.getElementById('fillGrounding').style.width = "96.2%";
-                document.getElementById('valHallucination').innerText = "0.0104";
-                document.getElementById('fillHallucination').style.width = "1.0%";
-                document.getElementById('valSafety').innerText = "1.0000";
-                document.getElementById('fillSafety').style.width = "100%";
+                // Update Trust Gauges with REAL backend metrics
+                const metrics = data.metrics || {};
+                const grounding = metrics.grounding_pass !== undefined ? Number(metrics.grounding_pass) : 0.0;
+                const hallucination = metrics.hallucination_check !== undefined ? Number(metrics.hallucination_check) : 1.0;
+                const safety = metrics.safety_pass !== undefined ? Number(metrics.safety_pass) : 1.0;
+                const statusText = metrics.status || "UNKNOWN STATE";
+
+                document.getElementById('valGrounding').innerText = grounding.toFixed(4);
+                document.getElementById('fillGrounding').style.width = (grounding * 100) + "%";
+                
+                document.getElementById('valHallucination').innerText = hallucination.toFixed(4);
+                document.getElementById('fillHallucination').style.width = (hallucination * 100) + "%";
+                
+                document.getElementById('valSafety').innerText = safety.toFixed(4);
+                document.getElementById('fillSafety').style.width = (safety * 100) + "%";
+                
+                // If safety fails, turn the gauge red
+                if (safety < 1.0) {
+                    document.getElementById('fillSafety').classList.add('warning');
+                    document.getElementById('trustStatusText').style.color = "var(--calibration-red)";
+                } else {
+                    document.getElementById('fillSafety').classList.remove('warning');
+                    document.getElementById('trustStatusText').style.color = "var(--phosphor-cyan)";
+                }
+                
+                document.getElementById('trustStatusText').innerText = statusText;
 
                 // Update Histogram Split Track
                 const maxCap = 200.0;
